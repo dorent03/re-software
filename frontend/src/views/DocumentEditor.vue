@@ -63,6 +63,11 @@ const companyIban = computed(() => doc.value?.company_iban || '')
 const companyBic = computed(() => doc.value?.company_bic || '')
 const companyName = computed(() => doc.value?.company_name || '')
 
+function getErrorMessage(err, fallback) {
+  if (err instanceof Error) return err.message || fallback
+  return fallback
+}
+
 const isInvoiceType = computed(() => {
   const t = isEdit.value ? doc.value?.document_type : form.value.document_type
   return ['INVOICE', 'PARTIAL_INVOICE'].includes(t)
@@ -187,8 +192,7 @@ async function handleSave() {
       router.push(`/documents/${created.id}`)
     }
   } catch (err) {
-    const detail = err.response?.data?.detail
-    error.value = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail[0]?.msg || JSON.stringify(detail) : 'Speichern fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Speichern fehlgeschlagen')
   } finally {
     loading.value = false
   }
@@ -198,7 +202,7 @@ async function handleAddPayment(payment) {
   try {
     await docStore.addPayment(route.params.id, payment)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Zahlung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Zahlung fehlgeschlagen')
   }
 }
 
@@ -206,7 +210,7 @@ async function handleAddReminder(reminder) {
   try {
     await docStore.addReminder(route.params.id, reminder)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Mahnung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Mahnung fehlgeschlagen')
   }
 }
 
@@ -216,7 +220,7 @@ async function handleCancel() {
     const cancellation = await docStore.cancelDocument(route.params.id)
     router.push(`/documents/${cancellation.id}`)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Stornierung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Stornierung fehlgeschlagen')
   }
 }
 
@@ -226,7 +230,7 @@ async function handleCreditNote() {
     const credit = await docStore.createCreditNote(route.params.id)
     router.push(`/documents/${credit.id}`)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Gutschrift fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Gutschrift fehlgeschlagen')
   }
 }
 
@@ -236,7 +240,7 @@ async function handleConvert() {
     const invoice = await docStore.convertToInvoice(route.params.id)
     router.push(`/documents/${invoice.id}`)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Umwandlung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Umwandlung fehlgeschlagen')
   }
 }
 
@@ -245,31 +249,23 @@ async function handleDownloadPdf() {
     const url = await docStore.downloadPdf(route.params.id)
     window.open(url, '_blank')
   } catch (err) {
-    error.value = err.response?.data?.detail || 'PDF-Download fehlgeschlagen'
+    error.value = getErrorMessage(err, 'PDF-Download fehlgeschlagen')
   }
 }
 
 async function handleXRechnung() {
   try {
-    const url = await docStore.getXRechnung(route.params.id)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${doc.value?.document_number || 'xrechnung'}.xml`
-    a.click()
+    await docStore.getXRechnung(route.params.id)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'XRechnung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'XRechnung fehlgeschlagen')
   }
 }
 
 async function handleZugferd() {
   try {
-    const url = await docStore.getZugferd(route.params.id)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${doc.value?.document_number || 'zugferd'}.pdf`
-    a.click()
+    await docStore.getZugferd(route.params.id)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'ZUGFeRD fehlgeschlagen'
+    error.value = getErrorMessage(err, 'ZUGFeRD fehlgeschlagen')
   }
 }
 
@@ -280,7 +276,7 @@ async function handleStatusChange(newStatus) {
     await docStore.fetchDocument(route.params.id)
     loadRelatedDocuments()
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Statuswechsel fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Statuswechsel fehlgeschlagen')
   }
 }
 
@@ -320,7 +316,7 @@ async function handleCreatePartial() {
     showPartialModal.value = false
     router.push(`/documents/${partial.id}`)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Abschlagsrechnung fehlgeschlagen'
+    error.value = getErrorMessage(err, 'Abschlagsrechnung fehlgeschlagen')
   }
 }
 

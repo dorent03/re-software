@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '@/utils/api'
+import { getMonthlyRevenue, getRevenueByCustomer } from '@/services/statsService'
 
 export const useStatsStore = defineStore('stats', () => {
   const monthlyRevenue = ref([])
@@ -14,10 +14,7 @@ export const useStatsStore = defineStore('stats', () => {
   async function fetchMonthlyRevenue(year) {
     loading.value = true
     try {
-      const params = {}
-      if (year) params.year = year
-      const { data } = await api.get('/stats/revenue/monthly', { params })
-      monthlyRevenue.value = Array.isArray(data?.data) ? data.data : (data?.items ?? [])
+      monthlyRevenue.value = await getMonthlyRevenue(year)
     } finally {
       loading.value = false
     }
@@ -30,10 +27,7 @@ export const useStatsStore = defineStore('stats', () => {
   async function fetchCustomerRevenue(year) {
     loading.value = true
     try {
-      const params = {}
-      if (year) params.year = year
-      const { data } = await api.get('/stats/revenue/by-customer', { params })
-      customerRevenue.value = Array.isArray(data?.data) ? data.data : (data?.items ?? [])
+      customerRevenue.value = await getRevenueByCustomer(year)
     } finally {
       loading.value = false
     }

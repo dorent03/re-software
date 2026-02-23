@@ -50,6 +50,51 @@ export function positiveNumber(value, fieldName = 'Wert') {
 }
 
 /**
+ * Validate a number range (inclusive).
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @param {string} fieldName
+ * @returns {string|null}
+ */
+export function numberRange(value, min, max, fieldName = 'Wert') {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue) || numericValue < min || numericValue > max) {
+    return `${fieldName} muss zwischen ${min} und ${max} liegen`
+  }
+  return null
+}
+
+/**
+ * Validate VAT rate against supported rates.
+ * @param {number} value
+ * @returns {string|null}
+ */
+export function vatRate(value) {
+  const allowed = [0, 0.07, 0.19]
+  const numericValue = Number(value)
+  return allowed.includes(numericValue) ? null : 'Ungültiger MwSt.-Satz'
+}
+
+/**
+ * Validate payment terms between 0 and 365 days.
+ * @param {number} value
+ * @returns {string|null}
+ */
+export function paymentTerms(value) {
+  return numberRange(value, 0, 365, 'Zahlungsziel')
+}
+
+/**
+ * Validate discount percent (0-100).
+ * @param {number} value
+ * @returns {string|null}
+ */
+export function discountPercent(value) {
+  return numberRange(value, 0, 100, 'Rabatt')
+}
+
+/**
  * Run multiple validators on a value and return the first error.
  * @param {*} value
  * @param {Function[]} validators

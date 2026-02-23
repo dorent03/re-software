@@ -1,6 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '@/utils/api'
+import { db, nowIso } from '@/db'
+import {
+  createDocument as createDocumentEntry,
+  updateDocument as updateDocumentEntry,
+  addPayment as addPaymentEntry,
+  addReminder as addReminderEntry,
+  updateStatus as updateStatusEntry,
+  createPartialInvoice as createPartialInvoiceEntry,
+  listRelatedDocuments,
+  cancelDocument as cancelDocumentEntry,
+  createCreditNote as createCreditNoteEntry,
+  convertQuoteToInvoice,
+} from '@/services/documentService'
+import { buildDocumentPdfBlob } from '@/services/pdfService'
+import { buildXRechnungXml, buildZugferdXml, downloadXml } from '@/services/einvoiceService'
+
+const pdfBlobCache = new Map()
 
 export const useDocumentsStore = defineStore('documents', () => {
   const documents = ref([])
@@ -14,7 +30,7 @@ export const useDocumentsStore = defineStore('documents', () => {
   const filterStatus = ref('')
 
   /**
-   * Fetch paginated document list with optional filters.
+   * Fetch paginated document list with optional filters from IndexedDB.
    * @param {{ page?: number, limit?: number, search?: string, document_type?: string, status?: string }} params
    */
   async function fetchDocuments(params = {}) {
@@ -22,17 +38,26 @@ export const useDocumentsStore = defineStore('documents', () => {
     try {
       const pageNum = params.page ?? page.value
       const size = params.limit ?? pageSize.value
-      const query = {
-        page: pageNum,
-        page_size: size,
-      }
-      if (params.search || search.value) query.search = params.search || search.value
-      if (params.document_type || filterType.value) query.document_type = params.document_type || filterType.value
-      if (params.status || filterStatus.value) query.status = params.status || filterStatus.value
+      const searchQuery = String(params.search ?? search.value ?? '').trim().toLowerCase()
+      const documentType = params.document_type ?? filterType.value
+      const status = params.status ?? filterStatus.value
 
-      const { data } = await api.get('/documents/', { params: query })
-      documents.value = data.items ?? []
-      total.value = data.total ?? documents.value.length
+      const allDocuments = await db.documents.toArray()
+      const filtered = allDocuments
+        .filter((entry) => !documentType || entry.document_type === documentType)
+        .filter((entry) => !status || entry.status === status)
+        .filter((entry) => {
+          if (!searchQuery) return true
+          const values = [entry.document_number, entry.customer_name, entry.notes].map((value) =>
+            String(value || '').toLowerCase()
+          )
+          return values.some((value) => value.includes(searchQuery))
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+      total.value = filtered.length
+      const start = (pageNum - 1) * size
+      documents.value = filtered.slice(start, start + size).map((entry) => ({ id: String(entry.id), ...entry }))
     } finally {
       loading.value = false
     }
@@ -45,8 +70,8 @@ export const useDocumentsStore = defineStore('documents', () => {
   async function fetchDocument(id) {
     loading.value = true
     try {
-      const { data } = await api.get(`/documents/${id}`)
-      currentDocument.value = data
+      const data = await db.documents.get(Number(id))
+      currentDocument.value = data ? { id: String(data.id), ...data } : null
     } finally {
       loading.value = false
     }
@@ -57,8 +82,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {object} payload
    */
   async function createDocument(payload) {
-    const { data } = await api.post('/documents/', payload)
-    return data
+    return createDocumentEntry(payload)
   }
 
   /**
@@ -67,8 +91,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {object} payload
    */
   async function updateDocument(id, payload) {
-    const { data } = await api.patch(`/documents/${id}`, payload)
-    return data
+    return updateDocumentEntry(id, payload)
   }
 
   /**
@@ -76,7 +99,10 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {string} id
    */
   async function deleteDocument(id) {
-    await api.delete(`/documents/${id}`)
+    const current = await db.documents.get(Number(id))
+    if (!current) return
+    if (current.status !== 'DRAFT') throw new Error('Nur Entwürfe können gelöscht werden')
+    await db.documents.delete(Number(id))
   }
 
   /**
@@ -85,7 +111,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {{ amount: number, payment_method: string, note?: string }} payload
    */
   async function addPayment(id, payload) {
-    const { data } = await api.post(`/documents/${id}/payment`, payload)
+    const data = await addPaymentEntry(id, payload)
     currentDocument.value = data
     return data
   }
@@ -96,7 +122,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {{ fee?: number, note?: string }} payload
    */
   async function addReminder(id, payload) {
-    const { data } = await api.post(`/documents/${id}/reminder`, payload)
+    const data = await addReminderEntry(id, payload)
     currentDocument.value = data
     return data
   }
@@ -107,7 +133,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {string} status
    */
   async function updateStatus(id, status) {
-    const { data } = await api.patch(`/documents/${id}/status`, { status })
+    const data = await updateStatusEntry(id, status)
     currentDocument.value = data
     return data
   }
@@ -118,8 +144,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {{ amount: number, notes?: string }} payload
    */
   async function createPartialInvoice(id, payload) {
-    const { data } = await api.post(`/documents/${id}/create-partial`, payload)
-    return data
+    return createPartialInvoiceEntry(id, payload)
   }
 
   /**
@@ -128,8 +153,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @returns {{ parent: object|null, children: object[] }}
    */
   async function fetchRelatedDocuments(id) {
-    const { data } = await api.get(`/documents/${id}/related`)
-    return data
+    return listRelatedDocuments(id)
   }
 
   /**
@@ -137,8 +161,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {string} id
    */
   async function cancelDocument(id) {
-    const { data } = await api.post(`/documents/${id}/cancel`)
-    return data
+    return cancelDocumentEntry(id)
   }
 
   /**
@@ -146,8 +169,7 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {string} id
    */
   async function createCreditNote(id) {
-    const { data } = await api.post(`/documents/${id}/credit`)
-    return data
+    return createCreditNoteEntry(id)
   }
 
   /**
@@ -155,17 +177,22 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @param {string} id
    */
   async function convertToInvoice(id) {
-    const { data } = await api.post(`/documents/${id}/convert`)
-    return data
+    return convertQuoteToInvoice(id)
   }
 
   /**
-   * Generate the PDF for a document (must be called before preview/download).
+   * Generate a PDF for a document and keep it in memory cache.
    * @param {string} id
    */
   async function generatePdf(id) {
-    const { data } = await api.post(`/documents/${id}/pdf`)
-    return data
+    const document = await db.documents.get(Number(id))
+    if (!document) throw new Error('Dokument nicht gefunden')
+    const company = await db.company.orderBy('id').last()
+    const customer = await db.customers.get(Number(document.customer_id))
+    const blob = await buildDocumentPdfBlob(document, company, customer)
+    pdfBlobCache.set(String(id), blob)
+    await db.documents.update(Number(id), { ...document, updated_at: nowIso() })
+    return { ok: true }
   }
 
   /**
@@ -174,28 +201,38 @@ export const useDocumentsStore = defineStore('documents', () => {
    * @returns {string} blob URL
    */
   async function downloadPdf(id) {
-    // Ensure PDF is generated first
-    await api.post(`/documents/${id}/pdf`)
-    const { data } = await api.get(`/documents/${id}/pdf/download`, { responseType: 'blob' })
-    return URL.createObjectURL(data)
+    if (!pdfBlobCache.has(String(id))) {
+      await generatePdf(id)
+    }
+    return URL.createObjectURL(pdfBlobCache.get(String(id)))
   }
 
   /**
-   * Get XRechnung XML.
+   * Generate and download XRechnung XML.
    * @param {string} id
    */
   async function getXRechnung(id) {
-    const { data } = await api.get(`/documents/${id}/xrechnung`, { responseType: 'blob' })
-    return URL.createObjectURL(data)
+    const document = await db.documents.get(Number(id))
+    if (!document) throw new Error('Dokument nicht gefunden')
+    const company = await db.company.orderBy('id').last()
+    const customer = await db.customers.get(Number(document.customer_id))
+    const xml = buildXRechnungXml(document, company, customer)
+    downloadXml(`${document.document_number || 'xrechnung'}.xml`, xml)
+    return xml
   }
 
   /**
-   * Get ZUGFeRD PDF+XML.
+   * Generate and download ZUGFeRD XML.
    * @param {string} id
    */
   async function getZugferd(id) {
-    const { data } = await api.get(`/documents/${id}/zugferd`, { responseType: 'blob' })
-    return URL.createObjectURL(data)
+    const document = await db.documents.get(Number(id))
+    if (!document) throw new Error('Dokument nicht gefunden')
+    const company = await db.company.orderBy('id').last()
+    const customer = await db.customers.get(Number(document.customer_id))
+    const xml = buildZugferdXml(document, company, customer)
+    downloadXml(`${document.document_number || 'zugferd'}.xml`, xml)
+    return xml
   }
 
   return {

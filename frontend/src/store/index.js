@@ -1,4 +1,3 @@
-export { useAuthStore } from './auth'
 export { useCustomersStore } from './customers'
 export { useProductsStore } from './products'
 export { useDocumentsStore } from './documents'

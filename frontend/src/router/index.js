@@ -1,18 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { db } from '@/db'
 
 const routes = [
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { public: true, layout: 'blank' },
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('@/views/Register.vue'),
-    meta: { public: true, layout: 'blank' },
-  },
   {
     path: '/',
     redirect: '/dashboard',
@@ -87,7 +76,7 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),
-    meta: { title: 'Einstellungen', requiresAdmin: true },
+    meta: { title: 'Einstellungen' },
   },
 ]
 
@@ -97,14 +86,19 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem('access_token')
-  if (!to.meta.public && !token) {
-    return next({ name: 'Login' })
+  if (to.name === 'Settings') {
+    next()
+    return
   }
-  if ((to.name === 'Login' || to.name === 'Register') && token) {
-    return next({ name: 'Dashboard' })
-  }
-  next()
+  db.company.count().then((count) => {
+    if (count === 0) {
+      next({ name: 'Settings' })
+      return
+    }
+    next()
+  }).catch(() => {
+    next()
+  })
 })
 
 export default router

@@ -20,10 +20,9 @@ const pdfViewUrl = computed(() => {
 
 onMounted(async () => {
   try {
-    await docStore.generatePdf(route.params.id)
     pdfUrl.value = await docStore.downloadPdf(route.params.id)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'PDF konnte nicht geladen werden'
+    error.value = err instanceof Error ? err.message : 'PDF konnte nicht geladen werden'
   } finally {
     loading.value = false
   }

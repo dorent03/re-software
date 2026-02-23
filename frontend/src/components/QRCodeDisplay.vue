@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import QrcodeVue from 'qrcode.vue'
 
 const props = defineProps({
   /** IBAN of the receiving account */
@@ -26,11 +27,11 @@ const epcPayload = computed(() => {
     '1',
     'SCT',
     props.bic || '',
-    props.recipient || '',
+    (props.recipient || '').slice(0, 70),
     props.iban.replace(/\s/g, ''),
     `EUR${props.amount.toFixed(2)}`,
     '',
-    props.reference || '',
+    (props.reference || '').slice(0, 140),
     '',
     '',
   ]
@@ -41,14 +42,7 @@ const epcPayload = computed(() => {
 <template>
   <div v-if="epcPayload" class="flex flex-col items-center gap-2">
     <div class="rounded-lg border border-gray-200 bg-white p-3">
-      <!-- Use a simple canvas-based QR. For tree-shaking, we render via a basic SVG approach.
-           Since qrcode.vue might not support all Node 16 builds, we use a lightweight inline solution. -->
-      <img
-        :src="`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(epcPayload)}`"
-        alt="SEPA QR Code"
-        class="w-44 h-44"
-        loading="lazy"
-      />
+      <QrcodeVue :value="epcPayload" :size="176" level="M" render-as="svg" />
     </div>
     <p class="text-xs text-gray-500 text-center max-w-[200px]">
       SEPA-Überweisung<br />

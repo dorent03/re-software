@@ -63,7 +63,7 @@ async function handleSubmit() {
     }
     router.push('/products')
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Speichern fehlgeschlagen'
+    error.value = err instanceof Error ? err.message : 'Speichern fehlgeschlagen'
   } finally {
     loading.value = false
   }

@@ -45,13 +45,8 @@ onMounted(async () => {
 })
 
 function getApiErrorMessage(err) {
-  const detail = err.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0]
-    return first.msg || first.message || JSON.stringify(detail)
-  }
-  return err.response?.data?.message || 'Speichern fehlgeschlagen'
+  if (err instanceof Error) return err.message || 'Speichern fehlgeschlagen'
+  return 'Speichern fehlgeschlagen'
 }
 
 async function handleSubmit() {

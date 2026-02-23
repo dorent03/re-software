@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '@/utils/api'
+import { db, nowIso } from '@/db'
+import { exportAllData, importAllData } from '@/services/dataService'
 import FormInput from '@/components/FormInput.vue'
 
 const loading = ref(true)
 const saving = ref(false)
+const importing = ref(false)
 const error = ref('')
 const success = ref('')
 
@@ -30,93 +32,133 @@ const form = ref({
   default_vat_rate: 0.19,
   vat_rates: '19, 7, 0',
   default_due_days: 14,
-  default_payment_method: 'BANK_TRANSFER',
 })
 
-const logoFile = ref(null)
 const logoPreview = ref('')
+const companyId = ref(null)
+
+function mapCompanyToForm(company) {
+  return {
+    name: company.name || '',
+    street: company.street || '',
+    zip: company.zip || '',
+    city: company.city || '',
+    country: company.country || 'Deutschland',
+    phone: company.phone || '',
+    email: company.email || '',
+    website: company.website || '',
+    vat_id: company.vat_id || '',
+    tax_number: company.tax_number || '',
+    iban: company.iban || '',
+    bic: company.bic || '',
+    bank_name: company.bank_name || '',
+    invoice_prefix: company.invoice_prefix || 'RE',
+    invoice_next_number: company.invoice_next_number || 1,
+    quote_prefix: company.quote_prefix || 'AN',
+    footer_text: company.footer_text || '',
+    kleinunternehmer: !!company.kleinunternehmer,
+    default_vat_rate: company.default_vat_rate ?? 0.19,
+    vat_rates: (company.vat_rates || [0.19, 0.07, 0]).map((rate) => (rate * 100).toFixed(0)).join(', '),
+    default_due_days: company.default_due_days ?? 14,
+  }
+}
+
+async function readCompany() {
+  const company = await db.company.orderBy('id').last()
+  if (!company) return null
+  companyId.value = company.id
+  logoPreview.value = company.logo_base64 || ''
+  form.value = mapCompanyToForm(company)
+  return company
+}
 
 onMounted(async () => {
   try {
-    const { data } = await api.get('/companies/me')
-    if (data) {
-      form.value = {
-        name: data.name || '',
-        street: data.street || '',
-        zip: data.zip || '',
-        city: data.city || '',
-        country: data.country || 'Deutschland',
-        phone: data.phone || '',
-        email: data.email || '',
-        website: data.website || '',
-        vat_id: data.vat_id || '',
-        tax_number: data.tax_number || '',
-        iban: data.iban || '',
-        bic: data.bic || '',
-        bank_name: data.bank_name || '',
-        invoice_prefix: data.invoice_prefix || 'RE',
-        invoice_next_number: data.invoice_next_number || 1,
-        quote_prefix: data.quote_prefix || 'AN',
-        footer_text: data.footer_text || '',
-        kleinunternehmer: data.kleinunternehmer || false,
-        default_vat_rate: data.default_vat_rate ?? 0.19,
-        vat_rates: (data.vat_rates || [0.19, 0.07, 0]).map((r) => (r * 100).toFixed(0)).join(', '),
-        default_due_days: data.default_due_days ?? 14,
-        default_payment_method: data.default_payment_method || 'BANK_TRANSFER',
-      }
-      if (data.logo_url) {
-        logoPreview.value = data.logo_url
-      }
-    }
-  } catch {
-    /* Company not created yet – use defaults */
+    await readCompany()
   } finally {
     loading.value = false
   }
 })
 
-function onLogoChange(event) {
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onLogoChange(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  logoFile.value = file
-  logoPreview.value = URL.createObjectURL(file)
+  logoPreview.value = await readAsDataUrl(file)
 }
 
 async function handleSave() {
   error.value = ''
   success.value = ''
-  if (!form.value.name) {
+  if (!form.value.name.trim()) {
     error.value = 'Firmenname ist erforderlich'
     return
   }
 
   saving.value = true
   try {
-    const vatRatesArr = form.value.vat_rates
+    const vatRates = form.value.vat_rates
       .split(',')
-      .map((s) => parseFloat(s.trim()) / 100)
-      .filter((n) => !isNaN(n))
+      .map((entry) => Number(entry.trim()) / 100)
+      .filter((entry) => Number.isFinite(entry))
 
     const payload = {
       ...form.value,
-      vat_rates: vatRatesArr,
+      name: form.value.name.trim(),
+      vat_rates: vatRates,
+      logo_base64: logoPreview.value,
+      updated_at: nowIso(),
     }
 
-    await api.patch('/companies/me', payload)
-
-    if (logoFile.value) {
-      const fd = new FormData()
-      fd.append('file', logoFile.value)
-      await api.post('/companies/me/logo', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+    if (companyId.value == null) {
+      const id = await db.company.add({ ...payload, created_at: nowIso() })
+      companyId.value = id
+    } else {
+      await db.company.update(companyId.value, payload)
     }
 
     success.value = 'Einstellungen gespeichert'
-  } catch (err) {
-    error.value = err.response?.data?.detail || 'Speichern fehlgeschlagen'
+  } catch (saveError) {
+    error.value = saveError instanceof Error ? saveError.message : 'Speichern fehlgeschlagen'
   } finally {
     saving.value = false
+  }
+}
+
+async function handleExport() {
+  error.value = ''
+  success.value = ''
+  try {
+    await exportAllData()
+    success.value = 'Datenexport erstellt'
+  } catch (exportError) {
+    error.value = exportError instanceof Error ? exportError.message : 'Export fehlgeschlagen'
+  }
+}
+
+async function handleImport(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  importing.value = true
+  error.value = ''
+  success.value = ''
+  try {
+    await importAllData(file)
+    await readCompany()
+    success.value = 'Daten erfolgreich importiert'
+  } catch (importError) {
+    error.value = importError instanceof Error ? importError.message : 'Import fehlgeschlagen'
+  } finally {
+    importing.value = false
+    event.target.value = ''
   }
 }
 </script>
@@ -125,7 +167,7 @@ async function handleSave() {
   <div class="w-full">
     <div class="mb-6">
       <h2 class="text-xl font-bold text-gray-900">Einstellungen</h2>
-      <p class="text-sm text-gray-500 mt-1">Firmeninformationen und Rechnungseinstellungen</p>
+      <p class="text-sm text-gray-500 mt-1">Lokale Firmendaten, Dokument-Defaults und Backups</p>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-20">
@@ -243,8 +285,28 @@ async function handleSave() {
                 class="block text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 @change="onLogoChange"
               />
-              <p class="text-xs text-gray-400 mt-1">PNG, JPEG oder SVG. Max 2 MB.</p>
+              <p class="text-xs text-gray-400 mt-1">PNG, JPEG oder SVG. Wird lokal gespeichert.</p>
             </div>
+          </div>
+        </div>
+
+        <div class="card space-y-4">
+          <h3 class="text-base font-semibold text-gray-800">Daten-Backup</h3>
+          <p class="text-sm text-gray-500">
+            Exportieren Sie Ihre lokalen Daten als JSON-Datei oder importieren Sie eine vorhandene Sicherung.
+          </p>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <button type="button" class="btn-secondary" @click="handleExport">Daten exportieren</button>
+            <label class="btn-secondary cursor-pointer text-center">
+              {{ importing ? 'Import läuft...' : 'Daten importieren' }}
+              <input
+                type="file"
+                accept="application/json"
+                class="hidden"
+                :disabled="importing"
+                @change="handleImport"
+              />
+            </label>
           </div>
         </div>
 

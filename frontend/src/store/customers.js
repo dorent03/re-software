@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '@/utils/api'
+import { db, nowIso } from '@/db'
 
 export const useCustomersStore = defineStore('customers', () => {
   const customers = ref([])
@@ -12,56 +12,77 @@ export const useCustomersStore = defineStore('customers', () => {
   const search = ref('')
 
   /**
-   * Fetch paginated customer list.
+   * Fetch paginated customer list from IndexedDB.
    * @param {{ page?: number, limit?: number, search?: string }} params
    */
   async function fetchCustomers(params = {}) {
     loading.value = true
     try {
-      const query = {
-        skip: ((params.page || page.value) - 1) * (params.limit || pageSize.value),
-        limit: params.limit || pageSize.value,
-      }
-      if (params.search || search.value) query.search = params.search || search.value
-      const { data } = await api.get('/customers/', { params: query })
-      customers.value = data.items || data
-      total.value = data.total ?? customers.value.length
+      const pageNum = Number(params.page || page.value)
+      const limit = Number(params.limit || pageSize.value)
+      const querySearch = String(params.search ?? search.value ?? '').trim().toLowerCase()
+      const allCustomers = await db.customers.toArray()
+      const activeCustomers = allCustomers.filter((entry) => entry.is_active !== false)
+      const filtered = querySearch
+        ? activeCustomers.filter((entry) => {
+            const values = [entry.name, entry.email, entry.phone, entry.city, entry.customer_number]
+              .map((value) => String(value || '').toLowerCase())
+            return values.some((value) => value.includes(querySearch))
+          })
+        : activeCustomers
+
+      total.value = filtered.length
+      const start = (pageNum - 1) * limit
+      customers.value = filtered.slice(start, start + limit).map((entry) => ({ ...entry, id: String(entry.id) }))
     } finally {
       loading.value = false
     }
   }
 
   /**
-   * Fetch single customer by id.
+   * Fetch single customer by id from IndexedDB.
    * @param {string} id
    */
   async function fetchCustomer(id) {
     loading.value = true
     try {
-      const { data } = await api.get(`/customers/${id}`)
-      currentCustomer.value = data
+      const data = await db.customers.get(Number(id))
+      currentCustomer.value = data ? { ...data, id: String(data.id) } : null
     } finally {
       loading.value = false
     }
   }
 
   /**
-   * Create a new customer.
+   * Create a new customer in IndexedDB.
    * @param {object} payload
    */
   async function createCustomer(payload) {
-    const { data } = await api.post('/customers/', payload)
-    return data
+    const now = nowIso()
+    const existingCustomers = await db.customers.toArray()
+    const nextNumber = existingCustomers.length + 1
+    const id = await db.customers.add({
+      ...payload,
+      customer_number: payload.customer_number || `CUST-${String(nextNumber).padStart(6, '0')}`,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    })
+    const created = await db.customers.get(id)
+    return { ...created, id: String(created.id) }
   }
 
   /**
-   * Update an existing customer.
+   * Update an existing customer in IndexedDB.
    * @param {string} id
    * @param {object} payload
    */
   async function updateCustomer(id, payload) {
-    const { data } = await api.patch(`/customers/${id}`, payload)
-    return data
+    const current = await db.customers.get(Number(id))
+    if (!current) throw new Error('Kunde nicht gefunden')
+    const updated = { ...current, ...payload, updated_at: nowIso() }
+    await db.customers.update(Number(id), updated)
+    return { ...updated, id: String(id) }
   }
 
   /**
@@ -69,7 +90,9 @@ export const useCustomersStore = defineStore('customers', () => {
    * @param {string} id
    */
   async function deleteCustomer(id) {
-    await api.delete(`/customers/${id}`)
+    const current = await db.customers.get(Number(id))
+    if (!current) return
+    await db.customers.update(Number(id), { ...current, is_active: false, updated_at: nowIso() })
   }
 
   return {
