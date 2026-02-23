@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+    @page {
+        size: A4;
+        margin: 20mm 15mm 25mm 15mm;
+        @bottom-center {
+            content: "Seite " counter(page) " von " counter(pages);
+            font-size: 9px;
+            color: #666;
+        }
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 11px;
+        color: #333;
+        line-height: 1.5;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 30px;
+        border-bottom: 2px solid #2563eb;
+        padding-bottom: 15px;
+    }
+    .header-left { flex: 1; }
+    .header-right { text-align: right; }
+    .logo { max-width: 180px; max-height: 80px; margin-bottom: 8px; }
+    .company-name { font-size: 18px; font-weight: 700; color: #1e293b; }
+    .company-details { font-size: 10px; color: #64748b; margin-top: 4px; }
+    .document-title { font-size: 22px; font-weight: 700; color: #2563eb; margin-bottom: 4px; }
+    .document-meta { font-size: 10px; color: #64748b; }
+    .document-meta span { display: block; margin-bottom: 2px; }
+
+    .addresses { display: flex; justify-content: space-between; margin-bottom: 25px; }
+    .address-block { width: 48%; }
+    .address-label {
+        font-size: 9px; text-transform: uppercase; color: #94a3b8;
+        letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600;
+    }
+    .address-content { font-size: 11px; line-height: 1.6; }
+    .address-name { font-weight: 700; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    thead th {
+        background-color: #f1f5f9; padding: 8px 10px; text-align: left;
+        font-size: 10px; font-weight: 600; text-transform: uppercase;
+        color: #475569; border-bottom: 2px solid #e2e8f0;
+    }
+    thead th.right { text-align: right; }
+    tbody td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    tbody td.right { text-align: right; }
+    .item-name { font-weight: 600; }
+    .item-description { font-size: 10px; color: #64748b; }
+    .item-discount { font-size: 9px; color: #dc2626; }
+
+    .bottom-section { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .bottom-left { width: 45%; }
+    .bottom-right { width: 50%; }
+
+    .totals-table { width: 100%; }
+    .totals-table td { padding: 4px 10px; border: none; }
+    .totals-table .label { text-align: left; color: #64748b; font-size: 11px; }
+    .totals-table .value { text-align: right; font-size: 11px; }
+    .totals-table .total-row td {
+        border-top: 2px solid #2563eb; font-size: 14px;
+        font-weight: 700; color: #1e293b; padding-top: 8px;
+    }
+
+    .vat-breakdown { margin-bottom: 15px; }
+    .vat-breakdown table { margin-bottom: 5px; }
+    .vat-breakdown td { padding: 3px 10px; font-size: 10px; color: #64748b; border: none; }
+    .vat-breakdown .vb-label { font-size: 9px; text-transform: uppercase; font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
+
+    .qr-section { text-align: center; margin-top: 10px; }
+    .qr-section img { width: 120px; height: 120px; }
+    .qr-section .qr-label { font-size: 9px; color: #94a3b8; margin-top: 4px; }
+
+    .notes-section {
+        margin-bottom: 20px; padding: 12px; background-color: #f8fafc;
+        border-left: 3px solid #2563eb; border-radius: 0 4px 4px 0;
+    }
+    .notes-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }
+    .notes-text { font-size: 11px; color: #475569; white-space: pre-line; }
+
+    .kleinunternehmer-notice { font-size: 10px; color: #64748b; font-style: italic; margin-bottom: 15px; }
+
+    .payment-info {
+        margin-top: 15px; padding: 10px; background-color: #f8fafc;
+        border-radius: 4px; font-size: 10px;
+    }
+    .payment-info .label { font-weight: 600; color: #475569; }
+
+    .reminders-section { margin-bottom: 15px; }
+    .reminders-section table td { padding: 3px 10px; font-size: 10px; border: none; }
+
+    .footer {
+        margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0;
+        font-size: 9px; color: #94a3b8; text-align: center; line-height: 1.6;
+    }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <div class="header-left">
+        {% if company.logo_path %}
+        <img src="{{ company.logo_path }}" alt="Logo" class="logo">
+        {% endif %}
+        <div class="company-name">{{ company.name }}</div>
+        <div class="company-details">
+            {{ company.street }}<br>
+            {{ company.zip_code }} {{ company.city }}, {{ company.country }}
+            {% if company.phone %}<br>Tel: {{ company.phone }}{% endif %}
+            {% if company.email %}<br>{{ company.email }}{% endif %}
+            {% if company.website %}<br>{{ company.website }}{% endif %}
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="document-title">{{ document_title }}</div>
+        <div class="document-meta">
+            <span><strong>Nr.:</strong> {{ document.document_number }}</span>
+            <span><strong>Datum:</strong> {{ document.issue_date }}</span>
+            {% if document.service_date %}
+            <span><strong>Leistungsdatum:</strong> {{ document.service_date }}</span>
+            {% endif %}
+            {% if document.document_type in ["INVOICE", "PARTIAL_INVOICE"] %}
+            <span><strong>Fällig:</strong> {{ document.due_date }}</span>
+            {% endif %}
+            <span><strong>Status:</strong> {{ document.status }}</span>
+            {% if related_document_number %}
+            <span><strong>Bezug:</strong> {{ related_document_number }}</span>
+            {% elif document.related_document_id %}
+            <span><strong>Bezug:</strong> {{ document.related_document_id }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Addresses -->
+<div class="addresses">
+    <div class="address-block">
+        <div class="address-label">Absender</div>
+        <div class="address-content">
+            <div class="address-name">{{ company.name }}</div>
+            {{ company.street }}<br>
+            {{ company.zip_code }} {{ company.city }}
+            {% if company.tax_id %}<br>USt-IdNr.: {{ company.tax_id }}{% endif %}
+        </div>
+    </div>
+    <div class="address-block">
+        <div class="address-label">Empfänger</div>
+        <div class="address-content">
+            <div class="address-name">{{ customer.name }}</div>
+            {{ customer.street }}<br>
+            {{ customer.zip_code }} {{ customer.city }}
+            {% if customer.tax_id %}<br>USt-IdNr.: {{ customer.tax_id }}{% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Line items table -->
+<table>
+    <thead>
+        <tr>
+            <th style="width: 4%;">Pos.</th>
+            <th style="width: 28%;">Bezeichnung</th>
+            <th class="right" style="width: 8%;">Menge</th>
+            <th style="width: 8%;">Einheit</th>
+            <th class="right" style="width: 11%;">Einzelpreis</th>
+            {% if has_discounts %}
+            <th class="right" style="width: 9%;">Rabatt</th>
+            {% endif %}
+            {% if not document.is_kleinunternehmer %}
+            <th class="right" style="width: 8%;">MwSt.</th>
+            {% endif %}
+            <th class="right" style="width: 11%;">Netto</th>
+            <th class="right" style="width: 13%;">Gesamt</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in line_items %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>
+                <div class="item-name">{{ item.name }}</div>
+                {% if item.description %}
+                <div class="item-description">{{ item.description }}</div>
+                {% endif %}
+                {% if item.discount_percent and item.discount_percent > 0 %}
+                <div class="item-discount">-{{ "%.1f"|format(item.discount_percent) }}% Rabatt ({{ "%.2f"|format(item.discount_amount) }} €)</div>
+                {% endif %}
+            </td>
+            <td class="right">{{ "%.2f"|format(item.quantity) }}</td>
+            <td>{{ item.unit }}</td>
+            <td class="right">{{ "%.2f"|format(item.unit_price) }} €</td>
+            {% if has_discounts %}
+            <td class="right">
+                {% if item.discount_percent and item.discount_percent > 0 %}
+                {{ "%.1f"|format(item.discount_percent) }}%
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            {% endif %}
+            {% if not document.is_kleinunternehmer %}
+            <td class="right">{{ "%.0f"|format(item.vat_rate * 100) }}%</td>
+            {% endif %}
+            <td class="right">{{ "%.2f"|format(item.net_amount) }} €</td>
+            <td class="right">{{ "%.2f"|format(item.gross_amount) }} €</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Bottom section: QR left, Totals right -->
+<div class="bottom-section">
+    <div class="bottom-left">
+        {% if qr_path %}
+        <div class="qr-section">
+            <img src="{{ qr_path }}" alt="SEPA QR Code">
+            <div class="qr-label">SEPA-Überweisung per QR-Code</div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="bottom-right">
+        <!-- VAT breakdown -->
+        {% if vat_breakdown %}
+        <div class="vat-breakdown">
+            <div class="vb-label">MwSt.-Aufschlüsselung</div>
+            <table>
+                {% for vb in vat_breakdown %}
+                <tr>
+                    <td>{{ vb.rate_pct }}% auf {{ "%.2f"|format(vb.net) }} €</td>
+                    <td style="text-align:right;">{{ "%.2f"|format(vb.vat) }} €</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Totals -->
+        <table class="totals-table">
+            <tr>
+                <td class="label">Netto</td>
+                <td class="value">{{ "%.2f"|format(document.totals.net) }} €</td>
+            </tr>
+            {% if not document.is_kleinunternehmer %}
+            <tr>
+                <td class="label">MwSt.</td>
+                <td class="value">{{ "%.2f"|format(document.totals.vat) }} €</td>
+            </tr>
+            {% endif %}
+            <tr class="total-row">
+                <td class="label">Gesamtbetrag</td>
+                <td class="value">{{ "%.2f"|format(document.totals.gross) }} €</td>
+            </tr>
+            {% if document.totals.paid_amount and document.totals.paid_amount > 0 %}
+            <tr>
+                <td class="label">Bereits bezahlt</td>
+                <td class="value">{{ "%.2f"|format(document.totals.paid_amount) }} €</td>
+            </tr>
+            <tr>
+                <td class="label"><strong>Offener Betrag</strong></td>
+                <td class="value"><strong>{{ "%.2f"|format(document.totals.remaining_amount) }} €</strong></td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+</div>
+
+<!-- Kleinunternehmer notice -->
+{% if document.is_kleinunternehmer %}
+<div class="kleinunternehmer-notice">
+    Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.
+</div>
+{% endif %}
+
+<!-- Reminders -->
+{% if document.reminders and document.reminders|length > 0 %}
+<div class="reminders-section">
+    <div class="notes-label">Mahnungen</div>
+    <table>
+        {% for r in document.reminders %}
+        <tr>
+            <td>{{ r.level }}. Mahnung</td>
+            <td>{{ r.date }}</td>
+            {% if r.fee > 0 %}
+            <td>Mahngebühr: {{ "%.2f"|format(r.fee) }} €</td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+<!-- Notes -->
+{% if document.notes %}
+<div class="notes-section">
+    <div class="notes-label">Bemerkungen</div>
+    <div class="notes-text">{{ document.notes }}</div>
+</div>
+{% endif %}
+
+<!-- Payment info -->
+{% if document.document_type in ["INVOICE", "PARTIAL_INVOICE"] and company.iban %}
+<div class="payment-info">
+    <span class="label">Bankverbindung:</span>
+    {% if company.bank_name %}{{ company.bank_name }} | {% endif %}
+    IBAN: {{ company.iban }}
+    {% if company.bic %} | BIC: {{ company.bic }}{% endif %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div class="footer">
+    {{ company.name }}
+    {% if company.street %} | {{ company.street }}, {{ company.zip_code }} {{ company.city }}{% endif %}
+    {% if company.tax_id %} | USt-IdNr.: {{ company.tax_id }}{% endif %}
+</div>
+
+</body>
+</html>
